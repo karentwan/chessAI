@@ -458,7 +458,7 @@ class MoveGenerator:
                         break
             x -= 1
         # 上
-        x, y = j, y - 1
+        x, y = j, i - 1
         flag = False
         while y >= 0:
             if chess[y][x] == Chessman.NOCHESS:
@@ -470,9 +470,10 @@ class MoveGenerator:
                 else:
                     if not self.same(id, chess[y][x]):
                         self.add_move(j, i, x, y, ply)
+                        break
             y -= 1
         # 下
-        x, y = j, y + 1
+        x, y = j, i + 1
         flag = False
         while y < 10:
             if chess[y][x] == Chessman.NOCHESS:
@@ -484,6 +485,7 @@ class MoveGenerator:
                 else:
                     if not self.same(id, chess[y][x]):
                         self.add_move(j, i, x, y, ply)
+                        break
             y += 1
 
 

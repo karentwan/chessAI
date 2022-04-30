@@ -21,7 +21,7 @@ class Opponent(QtCore.QObject):
 
     def __init__(self, slot, parent=None) -> None:
         super(Opponent, self).__init__(parent)
-        self.AI = core.NegamaxEngine(3)
+        self.AI = core.NegamaxEngine(1)
         self.process_signal.connect(self.play)
         self.play_signal.connect(slot)
 
