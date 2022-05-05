@@ -6,12 +6,15 @@ from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5 import QtCore
 import os, sys
+import json
 dir_path = os.path.dirname(os.path.realpath(__file__))
 parent_dir_path = os.path.abspath(os.path.join(dir_path, os.pardir))
 sys.path.insert(0, parent_dir_path)
 import resources_rc  # 不导包的话程序无法使用图片资源, 而且不会报错
 import chess_play.core as core
 from constants import *
+from threading import Thread
+import socket
 
 
 class Opponent(QtCore.QObject):
@@ -31,6 +34,63 @@ class Opponent(QtCore.QObject):
         old_point_i, old_point_j, point_i, point_j = self.AI.search_a_good_move(chess)
         # 发送给主线程
         self.play_signal.emit(old_point_i, old_point_j, point_i, point_j)
+
+
+class NetOpponent(QtCore.QObject):
+    recv_signal = QtCore.pyqtSignal(int, int, int, int)  # 接收主线程的数据
+    send_signal = QtCore.pyqtSignal(int, int, int, int)  # 发送给主线程
+
+    def __init__(self, slot, parent=None):
+        super(NetOpponent, self).__init__(parent)
+        self.data = {
+            'target': 0,
+            'old_point_i': None,
+            'old_point_j': None,
+            'point_i': None,
+            'point_j': None
+        }
+        # 创建一个套接字
+        self.client = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+        host = socket.gethostname()
+        self.client.connect((host, 5321))  # 连接远程服务器
+        # 连接信号与槽
+        self.send_signal.connect(self.send)
+        self.recv_signal.connect(slot)
+        # 开启一个线程接收远程服务端的数据
+        t = Thread(target=self.recv)
+        t.setDaemon(True)
+        t.start()
+
+    def reverse(self, i, j):
+        '''
+        坐标翻转一下
+        :param i:
+        :param j:
+        :return:
+        '''
+        new_i, j = 9 - i, j
+        return new_i, j
+
+    @QtCore.pyqtSlot(int, int, int, int)
+    def send(self, old_point_i, old_point_j, point_i, point_j):
+        # 翻转一下发送
+        old_point_i, old_point_j = self.reverse(old_point_i, old_point_j)
+        point_i, point_j = self.reverse(point_i, point_j)
+        self.data['old_point_i'] = old_point_i
+        self.data['old_point_j'] = old_point_j
+        self.data['point_i'] = point_i
+        self.data['point_j'] = point_j
+        # 发送数据
+        self.client.send(json.dumps(self.data).encode('utf-8'))
+
+    def recv(self):
+        while True:
+            data = self.client.recv(1024).decode('utf-8')
+            obj = json.loads(json.loads(data))
+            old_i, old_j, i, j = obj['old_point_i'], obj['old_point_j'], obj['point_i'], obj['point_j']
+            print("({}, {}) -> ({}, {})".format(old_i, old_j, i, j))
+            # 将数据发送给主线程
+            self.recv_signal.emit(old_i, old_j, i, j)
 
 
 class MainWindow(QWidget):
@@ -67,7 +127,7 @@ class MainWindow(QWidget):
         self.win_pixmap = QPixmap(':/resources/win.png')
         self.loss_pixmap = QPixmap(':/resources/loss.png')
         self.mask_pixmap = QPixmap(':/resources/mask.png')
-        self.up_red = False  # 红子是否在上方
+        self.up_red = True  # 红子是否在上方, 代表对方先手, 需要判断一下
         if self.up_red:
             # 红子在上的棋盘
             self.chess = [
@@ -97,14 +157,16 @@ class MainWindow(QWidget):
                 [0, 0, 0, 0, 0, 0, 0, 0, 0],
                 [9, 10, 13, 12, 8, 12, 13, 10, 9]
             ]
-            self.game_self = GameState.RED
+            self.game_self =GameState.BLACK if self.up_red else GameState.RED
+        self.mode = 'NET'   # NET, AI
         # 定义对方线程, 开始给对方发送数据
         thread = QtCore.QThread(self)
         thread.start()  # thread线程里面有一个事件循环
-        self.opponent = Opponent(self.move)
+        if self.mode == 'AI':
+            self.opponent = Opponent(self.move)
+        else:
+            self.opponent = NetOpponent(self.move)
         self.opponent.moveToThread(thread)
-        # 连接主线程
-        # self.opponent.play_signal.connect(self.move)
 
     def init_ui(self):
         self.setFixedSize(Constants.CHESS_WIDTH, Constants.CHESS_HEIGHT)  # 设置窗口固定值(w, h)
@@ -190,9 +252,9 @@ class MainWindow(QWidget):
         elif self.game_state == GameState.BLACK_WIN:
             print('黑方获胜')
             return
-        # if self.game_state != self.game_self:
-        #     print('轮到对方下棋')
-        #     return
+        if self.game_state != self.game_self:
+            print('轮到对方下棋')
+            return
         # 获取点击坐标
         p = e.pos()
         x, y = p.x(), p.y()
@@ -215,13 +277,16 @@ class MainWindow(QWidget):
             self.click_state = ClickState.NO_SELECTED
             self.repaint()
             # 对手下棋
-            self.opponent_play()
+            self.opponent_play(old_i, old_j, idx_i, idx_j)
             self.repaint()
         self.repaint()  # 重绘
 
-    def opponent_play(self):
+    def opponent_play(self, old_point_i, old_point_j, point_i, point_j):
         # AI下棋
-        self.opponent.process_signal.emit(self.chess)
+        if self.mode == 'AI':  # AI下棋
+            self.opponent.process_signal.emit(self.chess)
+        else:  # 网络对手下棋
+            self.opponent.send_signal.emit(old_point_i, old_point_j, point_i, point_j)
 
     def check(self, idx_i, idx_j):
         '''
@@ -393,6 +458,7 @@ class MainWindow(QWidget):
         :param idx_j: 目标位置的col
         :return:
         '''
+        print('收到对手的棋子.....')
         chess_man = self.chess[old_i][old_j]
         self.chess[old_i][old_j] = 0
         c = self.chess[idx_i][idx_j]

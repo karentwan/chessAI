@@ -616,12 +616,11 @@ class Evaluation:
 
     def evaluate(self, chess: List[List[int]], is_red: bool) -> int:
         '''
-        棋子评估函数
+        棋子评估函数, 判断三种情况, 灵活性(当前元素可以活动的范围), 被保护的值(当前元素被自己人保护), 被攻击(当前元素被敌方攻击)
         :param chess: 棋盘
         :param is_red: 是否轮到红子
         :return:
         '''
-        pass
         # 每调一次估值函数就统计一次(只有叶子节点才会调估值函数)
         self.leaf_cnt += 1
         self.reset()  # 重置中间状态值
@@ -633,6 +632,7 @@ class Evaluation:
                     self.get_relate_piece(chess, j, i)  # 找出该棋子所有相关位置
                     for k in range(self.pos_cnt):
                         target_type = chess[self.relate_pos[k].y][self.relate_pos[k].x]
+                        # 如果当前元素有一个空位可以走, 则灵活性加1
                         if target_type == Chessman.NOCHESS:
                             self.flexibility_pos[i][j] += 1
                         else:
@@ -641,6 +641,7 @@ class Evaluation:
                             else:  # 敌方棋子, 开始威胁
                                 self.attack_pos[self.relate_pos[k].y][self.relate_pos[k].x] += 1
                                 self.flexibility_pos[i][j] += 1  # 灵活性增加
+                                # 判断当前是否攻击到了对方的将军, 如果攻击到了对方的将军则直接就可以结束
                                 if target_type == Chessman.R_KING:
                                     if not is_red:
                                         return 18888
@@ -651,6 +652,7 @@ class Evaluation:
                                     self.attack_pos[self.relate_pos[k].y][self.relate_pos[k].x] \
                                         += (30 + (
                                             self.base_value[target_type] - self.base_value[chess_type]) // 10) // 10
+        # 计算灵活性带来的价值
         for i in range(10):
             for j in range(9):
                 if chess[i][j] != Chessman.NOCHESS:
@@ -658,6 +660,7 @@ class Evaluation:
                     self.chess_value[i][j] += 1
                     self.chess_value[i][j] += self.flex_value[chess_type] * self.flexibility_pos[i][j]
                     self.chess_value[i][j] += self.get_bing_value(j, i, chess)
+        # 统计被攻击的棋子所损失的价值
         half_value = 0
         for i in range(10):
             for j in range(9):
@@ -666,8 +669,8 @@ class Evaluation:
                     half_value = self.base_value[chess_type] // 16
                     self.chess_value[i][j] += self.base_value[chess_type]
                     if self.is_red(chess_type):
-                        if self.attack_pos[i][j]:  # 如果当前红棋被危险
-                            if is_red:
+                        if self.attack_pos[i][j]:  # 如果当前红棋被威胁
+                            if is_red:  # 当前轮到红方下子
                                 if chess_type == Chessman.R_KING:
                                     self.chess_value[i][j] -= 20
                                 else:
