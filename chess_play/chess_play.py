@@ -43,7 +43,7 @@ class NetOpponent(QtCore.QObject):
     def __init__(self, slot, parent=None):
         super(NetOpponent, self).__init__(parent)
         self.data = {
-            'target': 0,
+            'target': 4,
             'old_point_i': None,
             'old_point_j': None,
             'point_i': None,
@@ -458,7 +458,7 @@ class MainWindow(QWidget):
         :param idx_j: 目标位置的col
         :return:
         '''
-        print('收到对手的棋子.....')
+        # print('收到对手的棋子.....')
         chess_man = self.chess[old_i][old_j]
         self.chess[old_i][old_j] = 0
         c = self.chess[idx_i][idx_j]
